@@ -1,0 +1,372 @@
+const { Plugin, PluginSettingTab, Setting, Notice, requestUrl } = require('obsidian');
+
+const DEFAULT_SETTINGS = {
+	provider: 'deepseek',
+	deepseekKey: '',
+	deepseekModel: 'deepseek-chat',
+	qwenKey: '',
+	qwenModel: 'qwen-plus',
+	doubaoKey: '',
+	doubaoModel: '',
+	systemPrompt: '',
+	targetLanguage: 'Chinese'
+};
+
+class AITranslator {
+	constructor(settings) {
+		this.settings = settings;
+	}
+
+	updateSettings(settings) {
+		this.settings = settings;
+	}
+
+	async translate(text) {
+		let url = '';
+		let model = '';
+		let apiKey = '';
+
+		switch (this.settings.provider) {
+			case 'deepseek':
+				url = 'https://api.deepseek.com/chat/completions';
+				model = this.settings.deepseekModel || 'deepseek-chat';
+				apiKey = this.settings.deepseekKey;
+				break;
+			case 'qwen':
+				url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+				model = this.settings.qwenModel || 'qwen-plus';
+				apiKey = this.settings.qwenKey;
+				break;
+			case 'doubao':
+				url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+				model = this.settings.doubaoModel; // User must enter Endpoint ID
+				apiKey = this.settings.doubaoKey;
+				break;
+		}
+
+		if (!apiKey) {
+			throw new Error('API Key not set');
+		}
+
+		const systemPrompt = this.settings.systemPrompt ||
+			`You are a professional translation assistant. Please directly translate the input text into ${this.settings.targetLanguage || 'Chinese'}. Do not output any explanations, comments, or extra words, only output the translation result.`;
+
+		const requestBody = {
+			model: model,
+			messages: [
+				{
+					role: "system",
+					content: systemPrompt
+				},
+				{
+					role: "user",
+					content: text
+				}
+			],
+			stream: false
+		};
+
+		const requestParam = {
+			url: url,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${apiKey}`
+			},
+			body: JSON.stringify(requestBody)
+		};
+
+		try {
+			const response = await requestUrl(requestParam);
+
+			if (response.status !== 200) {
+				// Try to parse error message from body if possible
+				let errorMsg = `API Error: ${response.status}`;
+				try {
+					if (response.json && response.json.error && response.json.error.message) {
+						errorMsg += ` - ${response.json.error.message}`;
+					}
+				} catch (e) {
+					// ignore json parse error
+				}
+				throw new Error(errorMsg);
+			}
+
+			const data = response.json;
+			if (!data.choices || data.choices.length === 0) {
+				throw new Error('No translation returned from API');
+			}
+			return data.choices[0].message.content.trim();
+		} catch (error) {
+			console.error('Translation Error:', error);
+			throw error;
+		}
+	}
+
+	async testConnection(provider, apiKey, model) {
+		// Simple test to verify connectivity and key
+		const testText = "Hello";
+		// Create a temporary settings object for testing
+		// To reuse logic without modifying instance state, we manually construct request
+
+		let url = '';
+		let targetModel = model;
+
+		switch (provider) {
+			case 'deepseek':
+				url = 'https://api.deepseek.com/chat/completions';
+				targetModel = model || 'deepseek-chat';
+				break;
+			case 'qwen':
+				url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+				targetModel = model || 'qwen-plus';
+				break;
+			case 'doubao':
+				url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+				// targetModel is already passed in
+				break;
+		}
+
+		const requestBody = {
+			model: targetModel,
+			messages: [
+				{ role: "user", content: "Test" }
+			],
+			max_tokens: 5
+		};
+
+		const requestParam = {
+			url: url,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${apiKey}`
+			},
+			body: JSON.stringify(requestBody)
+		};
+
+		try {
+			const response = await requestUrl(requestParam);
+			if (response.status === 200) {
+				return { success: true, message: "Connection successful!" };
+			} else {
+				return { success: false, message: `HTTP ${response.status}` };
+			}
+		} catch (error) {
+			return { success: false, message: error.message };
+		}
+	}
+}
+
+class AITranslatorPlugin extends Plugin {
+	settings;
+	translator;
+	statusBarItem;
+
+	async onload() {
+		await this.loadSettings();
+		this.translator = new AITranslator(this.settings);
+
+		// Status Bar
+		this.statusBarItem = this.addStatusBarItem();
+		this.statusBarItem.setText('');
+
+		// Add translation command
+		this.addCommand({
+			id: 'translate-insert-below',
+			name: 'Translate Selection (Insert Below)',
+			editorCallback: (editor, view) => {
+				const selection = editor.getSelection();
+				if (selection) {
+					this.translateAndInsert(editor, selection);
+				} else {
+					new Notice('Please select text to translate first');
+				}
+			}
+		});
+
+		// Add Context Menu
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor, view) => {
+				menu.addItem((item) => {
+					item
+						.setTitle("Translate Selection")
+						.setIcon("languages")
+						.onClick(async () => {
+							const selection = editor.getSelection();
+							if (selection) {
+								this.translateAndInsert(editor, selection);
+							} else {
+								new Notice('Please select text to translate first');
+							}
+						});
+				});
+			})
+		);
+
+		// Add settings tab
+		this.addSettingTab(new AITranslatorSettingTab(this.app, this));
+	}
+
+	async translateAndInsert(editor, text) {
+		new Notice('Translating...');
+		this.statusBarItem.setText('Translating...');
+
+		try {
+			const translatedText = await this.translator.translate(text);
+			if (translatedText) {
+				const replacement = `${text}\n${translatedText}`;
+				editor.replaceSelection(replacement);
+				new Notice('Translation completed');
+			}
+		} catch (error) {
+			console.error(error);
+			new Notice(`Translation failed: ${error.message}`);
+		} finally {
+			this.statusBarItem.setText('');
+		}
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+		if (this.translator) {
+			this.translator.updateSettings(this.settings);
+		}
+	}
+}
+
+class AITranslatorSettingTab extends PluginSettingTab {
+	constructor(app, plugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display() {
+		const { containerEl } = this;
+		containerEl.empty();
+
+		containerEl.createEl('h2', { text: 'AI Translation Settings' });
+
+		new Setting(containerEl)
+			.setName('AI Provider')
+			.setDesc('Select translation service to use')
+			.addDropdown(dropdown => dropdown
+				.addOption('deepseek', 'DeepSeek')
+				.addOption('qwen', 'Tongyi Qianwen (Qwen)')
+				.addOption('doubao', 'Doubao')
+				.setValue(this.plugin.settings.provider)
+				.onChange(async (value) => {
+					this.plugin.settings.provider = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		// DeepSeek Settings
+		if (this.plugin.settings.provider === 'deepseek') {
+			this.addProviderSettings(containerEl, 'DeepSeek', 'deepseek');
+		}
+
+		// Qwen Settings
+		if (this.plugin.settings.provider === 'qwen') {
+			this.addProviderSettings(containerEl, 'Tongyi Qianwen', 'qwen');
+		}
+
+		// Doubao Settings
+		if (this.plugin.settings.provider === 'doubao') {
+			this.addProviderSettings(containerEl, 'Doubao', 'doubao');
+		}
+
+		containerEl.createEl('h3', { text: 'Prompt Settings' });
+
+		new Setting(containerEl)
+			.setName('Target Language')
+			.setDesc('Language to translate into (used in default prompt)')
+			.addText(text => text
+				.setValue(this.plugin.settings.targetLanguage)
+				.onChange(async (value) => {
+					this.plugin.settings.targetLanguage = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom System Prompt')
+			.setDesc('Override the default system prompt. Leave empty to use default.')
+			.addTextArea(text => text
+				.setPlaceholder('You are a professional translation assistant...')
+				.setValue(this.plugin.settings.systemPrompt)
+				.onChange(async (value) => {
+					this.plugin.settings.systemPrompt = value;
+					await this.plugin.saveSettings();
+				}));
+	}
+
+	addProviderSettings(containerEl, name, keyPrefix) {
+		new Setting(containerEl)
+			.setName(`${name} API Key`)
+			.setDesc(`Enter your ${name} API Key`)
+			.addText(text => text
+				.setPlaceholder('sk-...')
+				.setValue(this.plugin.settings[`${keyPrefix}Key`])
+				.onChange(async (value) => {
+					this.plugin.settings[`${keyPrefix}Key`] = value;
+					await this.plugin.saveSettings();
+				}))
+			.addButton(button => button
+				.setButtonText('Test Connection')
+				.onClick(async () => {
+					button.setButtonText('Testing...');
+					const res = await this.plugin.translator.testConnection(
+						keyPrefix,
+						this.plugin.settings[`${keyPrefix}Key`],
+						this.plugin.settings[`${keyPrefix}Model`]
+					);
+					if (res.success) {
+						new Notice(`Success: ${res.message}`);
+					} else {
+						new Notice(`Failed: ${res.message}`);
+					}
+					button.setButtonText('Test Connection');
+				}));
+
+		if (keyPrefix === 'doubao') {
+			new Setting(containerEl)
+				.setName(`${name} Model`)
+				.setDesc('For Doubao, please enter your Endpoint ID (e.g., ep-202406...)')
+				.addText(text => text
+					.setPlaceholder('ep-...')
+					.setValue(this.plugin.settings[`${keyPrefix}Model`])
+					.onChange(async (value) => {
+						this.plugin.settings[`${keyPrefix}Model`] = value;
+						await this.plugin.saveSettings();
+					}));
+		} else {
+			new Setting(containerEl)
+				.setName(`${name} Model`)
+				.setDesc(`Select ${name} model`)
+				.addDropdown(dropdown => {
+					if (keyPrefix === 'deepseek') {
+						dropdown.addOption('deepseek-chat', 'DeepSeek-V3 (deepseek-chat)');
+						dropdown.addOption('deepseek-reasoner', 'DeepSeek-R1 (deepseek-reasoner)');
+					} else if (keyPrefix === 'qwen') {
+						dropdown.addOption('qwen-plus', 'Qwen-Plus');
+						dropdown.addOption('qwen-max', 'Qwen-Max');
+						dropdown.addOption('qwen-turbo', 'Qwen-Turbo');
+						dropdown.addOption('qwen-long', 'Qwen-Long');
+					}
+
+					dropdown
+						.setValue(this.plugin.settings[`${keyPrefix}Model`])
+						.onChange(async (value) => {
+							this.plugin.settings[`${keyPrefix}Model`] = value;
+							await this.plugin.saveSettings();
+						});
+				});
+		}
+	}
+}
+
+module.exports = AITranslatorPlugin;
