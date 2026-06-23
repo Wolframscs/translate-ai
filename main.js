@@ -398,19 +398,19 @@ class AITranslatorSettingTab extends PluginSettingTab {
 			const presetModels = keyPrefix === 'deepseek'
 				? ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash']
 				: keyPrefix === 'gemini'
-				? ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
-				: [
-					'qwen-plus',
-					'qwen-max',
-					'qwen-turbo',
-					'qwen-long',
-					'qwen3.7-plus',
-					'qwen3.7-max-2026-05-17',
-					'qwen3.6-35b-a3b',
-					'qwen3.6-flash-2026-04-16',
-					'deepseek-v4-flash',
-					'glm-5.1'
-				];
+					? ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+					: [
+						'qwen-plus',
+						'qwen-max',
+						'qwen-turbo',
+						'qwen-long',
+						'qwen3.7-plus',
+						'qwen3.7-max-2026-05-17',
+						'qwen3.6-35b-a3b',
+						'qwen3.6-flash-2026-04-16',
+						'deepseek-v4-flash',
+						'glm-5.1'
+					];
 
 			const currentModel = (this.plugin.settings[`${keyPrefix}Model`] || '').trim();
 			const isCustom = currentModel && !presetModels.includes(currentModel);

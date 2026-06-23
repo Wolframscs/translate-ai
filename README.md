@@ -1,8 +1,8 @@
-# 🚀 Obsidian 效率神器：Translate AI - 你的私人多模型翻译助手
+# 🚀 Obsidian 效率神器：Obsidian - Translation - 你的私人多模型翻译助手
 
 还在为 Obsidian 里看英文资料发愁？还在频繁切换窗口去复制粘贴翻译？
 
-今天给大家推荐一款超轻量、可定制的 Obsidian 翻译插件 —— **Translate AI**。它不仅支持 DeepSeek、通义千问、豆包等主流模型，还全面支持 Google Gemini 以及任意自定义的 OpenAI 兼容接口，并能一键生成翻译并自动插入笔记！
+今天给大家推荐一款超轻量、可定制的 Obsidian 翻译插件 —— **Obsidian - Translation**。它不仅支持 DeepSeek、通义千问、豆包等主流模型，还全面支持 Google Gemini 以及任意自定义的 OpenAI 兼容接口，并能一键生成翻译并自动插入笔记！
 
 ## ✨ 核心亮点
 
@@ -31,7 +31,7 @@
 (在此处填写你的安装包下载链接或 GitHub 链接)
 
 ### 第二步：配置 API
-1.  打开 Obsidian **设置** -> **AI Translator**。
+1.  打开 Obsidian **设置** -> **Obsidian - Translation**。
 2.  **选择服务商**：选择 `DeepSeek`、`Qwen`、`Doubao`、`Google Gemini` 或 `Custom API`。
 3.  **配置参数**：
     *   对于 **Gemini**，选择合适的模型（推荐 `gemini-2.5-flash`），填入 Gemini API Key。
