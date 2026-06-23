@@ -8,6 +8,11 @@ const DEFAULT_SETTINGS = {
 	qwenModel: 'qwen-plus',
 	doubaoKey: '',
 	doubaoModel: '',
+	geminiKey: '',
+	geminiModel: 'gemini-2.5-flash',
+	customUrl: '',
+	customKey: '',
+	customModel: '',
 	systemPrompt: '',
 	targetLanguage: 'Chinese'
 };
@@ -42,9 +47,23 @@ class AITranslator {
 				model = this.settings.doubaoModel; // User must enter Endpoint ID
 				apiKey = this.settings.doubaoKey;
 				break;
+			case 'gemini':
+				url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+				model = this.settings.geminiModel || 'gemini-2.5-flash';
+				apiKey = this.settings.geminiKey;
+				break;
+			case 'custom':
+				url = this.settings.customUrl;
+				model = this.settings.customModel;
+				apiKey = this.settings.customKey;
+				break;
 		}
 
-		if (!apiKey) {
+		if (this.settings.provider === 'custom' && !url) {
+			throw new Error('Custom API URL not set');
+		}
+
+		if (!apiKey && this.settings.provider !== 'custom') {
 			throw new Error('API Key not set');
 		}
 
@@ -66,13 +85,17 @@ class AITranslator {
 			stream: false
 		};
 
+		const headers = {
+			'Content-Type': 'application/json'
+		};
+		if (apiKey) {
+			headers['Authorization'] = `Bearer ${apiKey}`;
+		}
+
 		const requestParam = {
 			url: url,
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${apiKey}`
-			},
+			headers: headers,
 			body: JSON.stringify(requestBody)
 		};
 
@@ -125,6 +148,18 @@ class AITranslator {
 				url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
 				// targetModel is already passed in
 				break;
+			case 'gemini':
+				url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+				targetModel = model || 'gemini-2.5-flash';
+				break;
+			case 'custom':
+				url = this.settings.customUrl;
+				targetModel = model;
+				break;
+		}
+
+		if (provider === 'custom' && !url) {
+			return { success: false, message: 'Custom API URL not set' };
 		}
 
 		const requestBody = {
@@ -135,13 +170,17 @@ class AITranslator {
 			max_tokens: 5
 		};
 
+		const headers = {
+			'Content-Type': 'application/json'
+		};
+		if (apiKey) {
+			headers['Authorization'] = `Bearer ${apiKey}`;
+		}
+
 		const requestParam = {
 			url: url,
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${apiKey}`
-			},
+			headers: headers,
 			body: JSON.stringify(requestBody)
 		};
 
@@ -258,6 +297,8 @@ class AITranslatorSettingTab extends PluginSettingTab {
 				.addOption('deepseek', 'DeepSeek')
 				.addOption('qwen', 'Tongyi Qianwen (Qwen)')
 				.addOption('doubao', 'Doubao')
+				.addOption('gemini', 'Google Gemini')
+				.addOption('custom', 'Custom API (自定义 API)')
 				.setValue(this.plugin.settings.provider)
 				.onChange(async (value) => {
 					this.plugin.settings.provider = value;
@@ -278,6 +319,16 @@ class AITranslatorSettingTab extends PluginSettingTab {
 		// Doubao Settings
 		if (this.plugin.settings.provider === 'doubao') {
 			this.addProviderSettings(containerEl, 'Doubao', 'doubao');
+		}
+
+		// Gemini Settings
+		if (this.plugin.settings.provider === 'gemini') {
+			this.addProviderSettings(containerEl, 'Google Gemini', 'gemini');
+		}
+
+		// Custom Settings
+		if (this.plugin.settings.provider === 'custom') {
+			this.addCustomProviderSettings(containerEl);
 		}
 
 		containerEl.createEl('h3', { text: 'Prompt Settings' });
@@ -344,6 +395,26 @@ class AITranslatorSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}));
 		} else {
+			const presetModels = keyPrefix === 'deepseek'
+				? ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash']
+				: keyPrefix === 'gemini'
+				? ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+				: [
+					'qwen-plus',
+					'qwen-max',
+					'qwen-turbo',
+					'qwen-long',
+					'qwen3.7-plus',
+					'qwen3.7-max-2026-05-17',
+					'qwen3.6-35b-a3b',
+					'qwen3.6-flash-2026-04-16',
+					'deepseek-v4-flash',
+					'glm-5.1'
+				];
+
+			const currentModel = (this.plugin.settings[`${keyPrefix}Model`] || '').trim();
+			const isCustom = currentModel && !presetModels.includes(currentModel);
+
 			new Setting(containerEl)
 				.setName(`${name} Model`)
 				.setDesc(`Select ${name} model`)
@@ -351,21 +422,104 @@ class AITranslatorSettingTab extends PluginSettingTab {
 					if (keyPrefix === 'deepseek') {
 						dropdown.addOption('deepseek-chat', 'DeepSeek-V3 (deepseek-chat)');
 						dropdown.addOption('deepseek-reasoner', 'DeepSeek-R1 (deepseek-reasoner)');
+						dropdown.addOption('deepseek-v4-flash', 'DeepSeek-V4-Flash (deepseek-v4-flash)');
+					} else if (keyPrefix === 'gemini') {
+						dropdown.addOption('gemini-2.5-flash', 'Gemini 2.5 Flash (gemini-2.5-flash)');
+						dropdown.addOption('gemini-2.5-pro', 'Gemini 2.5 Pro (gemini-2.5-pro)');
+						dropdown.addOption('gemini-2.0-flash', 'Gemini 2.0 Flash (gemini-2.0-flash)');
+						dropdown.addOption('gemini-1.5-flash', 'Gemini 1.5 Flash (gemini-1.5-flash)');
+						dropdown.addOption('gemini-1.5-pro', 'Gemini 1.5 Pro (gemini-1.5-pro)');
 					} else if (keyPrefix === 'qwen') {
 						dropdown.addOption('qwen-plus', 'Qwen-Plus');
 						dropdown.addOption('qwen-max', 'Qwen-Max');
 						dropdown.addOption('qwen-turbo', 'Qwen-Turbo');
 						dropdown.addOption('qwen-long', 'Qwen-Long');
+						dropdown.addOption('qwen3.7-plus', 'Qwen-3.7-Plus (qwen3.7-plus)');
+						dropdown.addOption('qwen3.7-max-2026-05-17', 'Qwen-3.7-Max (2026-05-17)');
+						dropdown.addOption('qwen3.6-35b-a3b', 'Qwen-3.6-35B-A3B');
+						dropdown.addOption('qwen3.6-flash-2026-04-16', 'Qwen-3.6-Flash (2026-04-16)');
+						dropdown.addOption('deepseek-v4-flash', 'DeepSeek-V4-Flash (deepseek-v4-flash)');
+						dropdown.addOption('glm-5.1', 'GLM-5.1 (glm-5.1)');
 					}
+					dropdown.addOption('custom', 'Custom Model (自定义模型)...');
 
 					dropdown
-						.setValue(this.plugin.settings[`${keyPrefix}Model`])
+						.setValue(isCustom ? 'custom' : (currentModel || presetModels[0]))
 						.onChange(async (value) => {
-							this.plugin.settings[`${keyPrefix}Model`] = value;
+							if (value === 'custom') {
+								this.plugin.settings[`${keyPrefix}Model`] = '';
+							} else {
+								this.plugin.settings[`${keyPrefix}Model`] = value;
+							}
 							await this.plugin.saveSettings();
+							this.display();
 						});
 				});
+
+			if (isCustom || currentModel === '' || !presetModels.includes(currentModel)) {
+				new Setting(containerEl)
+					.setName(`Custom ${name} Model ID`)
+					.setDesc(`Enter the custom model ID for ${name}`)
+					.addText(text => text
+						.setPlaceholder('e.g. qwen-coder-plus')
+						.setValue(currentModel)
+						.onChange(async (value) => {
+							this.plugin.settings[`${keyPrefix}Model`] = value.trim();
+							await this.plugin.saveSettings();
+						}));
+			}
 		}
+	}
+
+	addCustomProviderSettings(containerEl) {
+		new Setting(containerEl)
+			.setName('Custom API URL')
+			.setDesc('Enter the complete chat completions API URL')
+			.addText(text => text
+				.setPlaceholder('https://api.openai.com/v1/chat/completions')
+				.setValue(this.plugin.settings.customUrl)
+				.onChange(async (value) => {
+					this.plugin.settings.customUrl = value.trim();
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom API Key')
+			.setDesc('Enter your API Key (leave empty if not required)')
+			.addText(text => text
+				.setPlaceholder('sk-...')
+				.setValue(this.plugin.settings.customKey)
+				.onChange(async (value) => {
+					this.plugin.settings.customKey = value.trim();
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Custom Model ID')
+			.setDesc('Enter the model ID')
+			.addText(text => text
+				.setPlaceholder('e.g. gpt-4o')
+				.setValue(this.plugin.settings.customModel)
+				.onChange(async (value) => {
+					this.plugin.settings.customModel = value.trim();
+					await this.plugin.saveSettings();
+				}))
+			.addButton(button => button
+				.setButtonText('Test Connection')
+				.onClick(async () => {
+					button.setButtonText('Testing...');
+					const res = await this.plugin.translator.testConnection(
+						'custom',
+						this.plugin.settings.customKey,
+						this.plugin.settings.customModel
+					);
+					if (res.success) {
+						new Notice(`Success: ${res.message}`);
+					} else {
+						new Notice(`Failed: ${res.message}`);
+					}
+					button.setButtonText('Test Connection');
+				}));
 	}
 }
 

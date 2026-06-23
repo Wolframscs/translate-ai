@@ -30,9 +30,23 @@ class AITranslator {
                 model = this.settings.doubaoModel; // User must enter Endpoint ID
                 apiKey = this.settings.doubaoKey;
                 break;
+            case 'gemini':
+                url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+                model = this.settings.geminiModel || 'gemini-2.5-flash';
+                apiKey = this.settings.geminiKey;
+                break;
+            case 'custom':
+                url = this.settings.customUrl;
+                model = this.settings.customModel;
+                apiKey = this.settings.customKey;
+                break;
         }
 
-        if (!apiKey) {
+        if (this.settings.provider === 'custom' && !url) {
+            throw new Error('Custom API URL not set');
+        }
+
+        if (!apiKey && this.settings.provider !== 'custom') {
             throw new Error('API Key not set');
         }
 
@@ -54,13 +68,17 @@ class AITranslator {
             stream: false
         };
 
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+
         const requestParam = {
             url: url,
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         };
 
@@ -95,16 +113,7 @@ class AITranslator {
         // Simple test to verify connectivity and key
         const testText = "Hello";
         // Create a temporary settings object for testing
-        const tempSettings = { ...this.settings, provider, [provider + 'Key']: apiKey };
-        if (provider === 'deepseek') tempSettings.deepseekModel = model;
-        if (provider === 'qwen') tempSettings.qwenModel = model;
-        if (provider === 'doubao') tempSettings.doubaoModel = model;
-
-        // Use a temporary translator instance or just call translate with logic
-        // But to reuse logic, let's just swap settings temporarily or allow passing context.
-        // Actually, let's just use the current instance logic but we need to override the settings being used.
-        // A cleaner way is to make `translate` accept optional override settings, or just manually construct the request here for the test.
-        // I will manually look up the URL similar to translate() to avoid messing with instance state.
+        // To reuse logic without modifying instance state, we manually construct request
 
         let url = '';
         let targetModel = model;
@@ -122,6 +131,18 @@ class AITranslator {
                 url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
                 // targetModel is already passed in
                 break;
+            case 'gemini':
+                url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+                targetModel = model || 'gemini-2.5-flash';
+                break;
+            case 'custom':
+                url = this.settings.customUrl;
+                targetModel = model;
+                break;
+        }
+
+        if (provider === 'custom' && !url) {
+            return { success: false, message: 'Custom API URL not set' };
         }
 
         const requestBody = {
@@ -129,16 +150,20 @@ class AITranslator {
             messages: [
                 { role: "user", content: "Test" }
             ],
-            max_tokens: 5
+			max_tokens: 5
         };
+
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        }
 
         const requestParam = {
             url: url,
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         };
 

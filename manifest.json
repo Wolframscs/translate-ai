@@ -1,9 +1,9 @@
 {
 	"id": "obsidian-ai-translator-custom",
-	"name": "AI Translator (DeepSeek/Qwen/Doubao)",
-	"version": "1.1.0",
+	"name": "AI Translator (DeepSeek/Qwen/Doubao/Gemini/Custom)",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
-	"description": "Lightweight translation plugin supporting DeepSeek, Tongyi Qianwen, and Doubao. Select English text and translate with one click, inserting below the original.",
+	"description": "Lightweight translation plugin supporting DeepSeek, Tongyi Qianwen, Doubao, Google Gemini, and arbitrary custom models. Select English text and translate with one click, inserting below the original.",
 	"author": "YourName",
 	"authorUrl": "",
 	"isDesktopOnly": false
