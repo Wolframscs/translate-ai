@@ -10,6 +10,20 @@ const DEFAULT_SETTINGS = {
 	doubaoModel: '',
 	geminiKey: '',
 	geminiModel: 'gemini-2.5-flash',
+	openaiKey: '',
+	openaiModel: 'gpt-4o',
+	claudeKey: '',
+	claudeModel: 'claude-3-5-sonnet-latest',
+	siliconflowKey: '',
+	siliconflowModel: 'deepseek-ai/DeepSeek-V3',
+	moonshotKey: '',
+	moonshotModel: 'moonshot-v1-8k',
+	zhipuKey: '',
+	zhipuModel: 'glm-4-flash',
+	openrouterKey: '',
+	openrouterModel: 'meta-llama/llama-3.3-70b-instruct',
+	groqKey: '',
+	groqModel: 'llama-3.3-70b-versatile',
 	customUrl: '',
 	customKey: '',
 	customModel: '',
@@ -17,7 +31,7 @@ const DEFAULT_SETTINGS = {
 	targetLanguage: 'Chinese'
 };
 
-class AITranslator {
+class Translator {
 	constructor(settings) {
 		this.settings = settings;
 	}
@@ -52,6 +66,41 @@ class AITranslator {
 				model = this.settings.geminiModel || 'gemini-2.5-flash';
 				apiKey = this.settings.geminiKey;
 				break;
+			case 'openai':
+				url = 'https://api.openai.com/v1/chat/completions';
+				model = this.settings.openaiModel || 'gpt-4o';
+				apiKey = this.settings.openaiKey;
+				break;
+			case 'claude':
+				url = 'https://api.anthropic.com/v1/messages';
+				model = this.settings.claudeModel || 'claude-3-5-sonnet-latest';
+				apiKey = this.settings.claudeKey;
+				break;
+			case 'siliconflow':
+				url = 'https://api.siliconflow.cn/v1/chat/completions';
+				model = this.settings.siliconflowModel || 'deepseek-ai/DeepSeek-V3';
+				apiKey = this.settings.siliconflowKey;
+				break;
+			case 'moonshot':
+				url = 'https://api.moonshot.cn/v1/chat/completions';
+				model = this.settings.moonshotModel || 'moonshot-v1-8k';
+				apiKey = this.settings.moonshotKey;
+				break;
+			case 'zhipu':
+				url = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+				model = this.settings.zhipuModel || 'glm-4-flash';
+				apiKey = this.settings.zhipuKey;
+				break;
+			case 'openrouter':
+				url = 'https://openrouter.ai/api/v1/chat/completions';
+				model = this.settings.openrouterModel || 'meta-llama/llama-3.3-70b-instruct';
+				apiKey = this.settings.openrouterKey;
+				break;
+			case 'groq':
+				url = 'https://api.groq.com/openai/v1/chat/completions';
+				model = this.settings.groqModel || 'llama-3.3-70b-versatile';
+				apiKey = this.settings.groqKey;
+				break;
 			case 'custom':
 				url = this.settings.customUrl;
 				model = this.settings.customModel;
@@ -70,26 +119,47 @@ class AITranslator {
 		const systemPrompt = this.settings.systemPrompt ||
 			`You are a professional translation assistant. Please directly translate the input text into ${this.settings.targetLanguage || 'Chinese'}. Do not output any explanations, comments, or extra words, only output the translation result.`;
 
-		const requestBody = {
-			model: model,
-			messages: [
-				{
-					role: "system",
-					content: systemPrompt
-				},
-				{
-					role: "user",
-					content: text
-				}
-			],
-			stream: false
-		};
-
+		let requestBody;
 		const headers = {
 			'Content-Type': 'application/json'
 		};
+
 		if (apiKey) {
-			headers['Authorization'] = `Bearer ${apiKey}`;
+			if (this.settings.provider === 'claude') {
+				headers['x-api-key'] = apiKey;
+				headers['anthropic-version'] = '2023-06-01';
+			} else {
+				headers['Authorization'] = `Bearer ${apiKey}`;
+			}
+		}
+
+		if (this.settings.provider === 'claude') {
+			requestBody = {
+				model: model,
+				system: systemPrompt,
+				messages: [
+					{
+						role: "user",
+						content: text
+					}
+				],
+				max_tokens: 4096
+			};
+		} else {
+			requestBody = {
+				model: model,
+				messages: [
+					{
+						role: "system",
+						content: systemPrompt
+					},
+					{
+						role: "user",
+						content: text
+					}
+				],
+				stream: false
+			};
 		}
 
 		const requestParam = {
@@ -108,6 +178,8 @@ class AITranslator {
 				try {
 					if (response.json && response.json.error && response.json.error.message) {
 						errorMsg += ` - ${response.json.error.message}`;
+					} else if (response.json && response.json.error && typeof response.json.error === 'string') {
+						errorMsg += ` - ${response.json.error}`;
 					}
 				} catch (e) {
 					// ignore json parse error
@@ -116,10 +188,17 @@ class AITranslator {
 			}
 
 			const data = response.json;
-			if (!data.choices || data.choices.length === 0) {
-				throw new Error('No translation returned from API');
+			if (this.settings.provider === 'claude') {
+				if (!data.content || data.content.length === 0) {
+					throw new Error('No translation returned from API');
+				}
+				return data.content[0].text.trim();
+			} else {
+				if (!data.choices || data.choices.length === 0) {
+					throw new Error('No translation returned from API');
+				}
+				return data.choices[0].message.content.trim();
 			}
-			return data.choices[0].message.content.trim();
 		} catch (error) {
 			console.error('Translation Error:', error);
 			throw error;
@@ -152,6 +231,34 @@ class AITranslator {
 				url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 				targetModel = model || 'gemini-2.5-flash';
 				break;
+			case 'openai':
+				url = 'https://api.openai.com/v1/chat/completions';
+				targetModel = model || 'gpt-4o';
+				break;
+			case 'claude':
+				url = 'https://api.anthropic.com/v1/messages';
+				targetModel = model || 'claude-3-5-sonnet-latest';
+				break;
+			case 'siliconflow':
+				url = 'https://api.siliconflow.cn/v1/chat/completions';
+				targetModel = model || 'deepseek-ai/DeepSeek-V3';
+				break;
+			case 'moonshot':
+				url = 'https://api.moonshot.cn/v1/chat/completions';
+				targetModel = model || 'moonshot-v1-8k';
+				break;
+			case 'zhipu':
+				url = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+				targetModel = model || 'glm-4-flash';
+				break;
+			case 'openrouter':
+				url = 'https://openrouter.ai/api/v1/chat/completions';
+				targetModel = model || 'meta-llama/llama-3.3-70b-instruct';
+				break;
+			case 'groq':
+				url = 'https://api.groq.com/openai/v1/chat/completions';
+				targetModel = model || 'llama-3.3-70b-versatile';
+				break;
 			case 'custom':
 				url = this.settings.customUrl;
 				targetModel = model;
@@ -162,19 +269,35 @@ class AITranslator {
 			return { success: false, message: 'Custom API URL not set' };
 		}
 
-		const requestBody = {
-			model: targetModel,
-			messages: [
-				{ role: "user", content: "Test" }
-			],
-			max_tokens: 5
-		};
+		let requestBody;
+		if (provider === 'claude') {
+			requestBody = {
+				model: targetModel,
+				messages: [
+					{ role: "user", content: "Test" }
+				],
+				max_tokens: 5
+			};
+		} else {
+			requestBody = {
+				model: targetModel,
+				messages: [
+					{ role: "user", content: "Test" }
+				],
+				max_tokens: 5
+			};
+		}
 
 		const headers = {
 			'Content-Type': 'application/json'
 		};
 		if (apiKey) {
-			headers['Authorization'] = `Bearer ${apiKey}`;
+			if (provider === 'claude') {
+				headers['x-api-key'] = apiKey;
+				headers['anthropic-version'] = '2023-06-01';
+			} else {
+				headers['Authorization'] = `Bearer ${apiKey}`;
+			}
 		}
 
 		const requestParam = {
@@ -197,14 +320,14 @@ class AITranslator {
 	}
 }
 
-class AITranslatorPlugin extends Plugin {
+class TranslatorPlugin extends Plugin {
 	settings;
 	translator;
 	statusBarItem;
 
 	async onload() {
 		await this.loadSettings();
-		this.translator = new AITranslator(this.settings);
+		this.translator = new Translator(this.settings);
 
 		// Status Bar
 		this.statusBarItem = this.addStatusBarItem();
@@ -244,7 +367,7 @@ class AITranslatorPlugin extends Plugin {
 		);
 
 		// Add settings tab
-		this.addSettingTab(new AITranslatorSettingTab(this.app, this));
+		this.addSettingTab(new TranslatorSettingTab(this.app, this));
 	}
 
 	async translateAndInsert(editor, text) {
@@ -278,7 +401,7 @@ class AITranslatorPlugin extends Plugin {
 	}
 }
 
-class AITranslatorSettingTab extends PluginSettingTab {
+class TranslatorSettingTab extends PluginSettingTab {
 	constructor(app, plugin) {
 		super(app, plugin);
 		this.plugin = plugin;
@@ -298,6 +421,13 @@ class AITranslatorSettingTab extends PluginSettingTab {
 				.addOption('qwen', 'Tongyi Qianwen (Qwen)')
 				.addOption('doubao', 'Doubao')
 				.addOption('gemini', 'Google Gemini')
+				.addOption('openai', 'OpenAI')
+				.addOption('claude', 'Anthropic Claude')
+				.addOption('siliconflow', 'SiliconFlow (硅基流动)')
+				.addOption('moonshot', 'Moonshot AI (Kimi)')
+				.addOption('zhipu', 'Zhipu AI (GLM)')
+				.addOption('openrouter', 'OpenRouter')
+				.addOption('groq', 'Groq')
 				.addOption('custom', 'Custom API (自定义 API)')
 				.setValue(this.plugin.settings.provider)
 				.onChange(async (value) => {
@@ -326,6 +456,41 @@ class AITranslatorSettingTab extends PluginSettingTab {
 			this.addProviderSettings(containerEl, 'Google Gemini', 'gemini');
 		}
 
+		// OpenAI Settings
+		if (this.plugin.settings.provider === 'openai') {
+			this.addProviderSettings(containerEl, 'OpenAI', 'openai');
+		}
+
+		// Claude Settings
+		if (this.plugin.settings.provider === 'claude') {
+			this.addProviderSettings(containerEl, 'Anthropic Claude', 'claude');
+		}
+
+		// SiliconFlow Settings
+		if (this.plugin.settings.provider === 'siliconflow') {
+			this.addProviderSettings(containerEl, 'SiliconFlow', 'siliconflow');
+		}
+
+		// Moonshot Settings
+		if (this.plugin.settings.provider === 'moonshot') {
+			this.addProviderSettings(containerEl, 'Moonshot AI (Kimi)', 'moonshot');
+		}
+
+		// Zhipu Settings
+		if (this.plugin.settings.provider === 'zhipu') {
+			this.addProviderSettings(containerEl, 'Zhipu AI (GLM)', 'zhipu');
+		}
+
+		// OpenRouter Settings
+		if (this.plugin.settings.provider === 'openrouter') {
+			this.addProviderSettings(containerEl, 'OpenRouter', 'openrouter');
+		}
+
+		// Groq Settings
+		if (this.plugin.settings.provider === 'groq') {
+			this.addProviderSettings(containerEl, 'Groq', 'groq');
+		}
+
 		// Custom Settings
 		if (this.plugin.settings.provider === 'custom') {
 			this.addCustomProviderSettings(containerEl);
@@ -343,11 +508,13 @@ class AITranslatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		const defaultPrompt = `You are a professional translation assistant. Please directly translate the input text into ${this.plugin.settings.targetLanguage || 'Chinese'}. Do not output any explanations, comments, or extra words, only output the translation result.`;
+
 		new Setting(containerEl)
 			.setName('Custom System Prompt')
 			.setDesc('Override the default system prompt. Leave empty to use default.')
 			.addTextArea(text => text
-				.setPlaceholder('You are a professional translation assistant...')
+				.setPlaceholder(defaultPrompt)
 				.setValue(this.plugin.settings.systemPrompt)
 				.onChange(async (value) => {
 					this.plugin.settings.systemPrompt = value;
@@ -395,11 +562,52 @@ class AITranslatorSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}));
 		} else {
-			const presetModels = keyPrefix === 'deepseek'
-				? ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash']
-				: keyPrefix === 'gemini'
-					? ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
-					: [
+			let presetModels = [];
+			switch (keyPrefix) {
+				case 'deepseek':
+					presetModels = ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-flash'];
+					break;
+				case 'gemini':
+					presetModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+					break;
+				case 'openai':
+					presetModels = ['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o3-mini', 'gpt-4-turbo'];
+					break;
+				case 'claude':
+					presetModels = ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'];
+					break;
+				case 'siliconflow':
+					presetModels = [
+						'deepseek-ai/DeepSeek-V3',
+						'deepseek-ai/DeepSeek-R1',
+						'Qwen/Qwen2.5-72B-Instruct',
+						'Qwen/Qwen2.5-32B-Instruct',
+						'Qwen/Qwen2.5-14B-Instruct',
+						'Qwen/Qwen2.5-7B-Instruct',
+						'THUDM/glm-4-9b-chat',
+						'internlm/internlm2_5-20b-chat'
+					];
+					break;
+				case 'moonshot':
+					presetModels = ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'];
+					break;
+				case 'zhipu':
+					presetModels = ['glm-4-flash', 'glm-4-plus', 'glm-4-air', 'glm-4-long'];
+					break;
+				case 'openrouter':
+					presetModels = [
+						'meta-llama/llama-3.3-70b-instruct',
+						'deepseek/deepseek-chat',
+						'google/gemini-2.5-flash',
+						'anthropic/claude-3.5-sonnet'
+					];
+					break;
+				case 'groq':
+					presetModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
+					break;
+				case 'qwen':
+				default:
+					presetModels = [
 						'qwen-plus',
 						'qwen-max',
 						'qwen-turbo',
@@ -411,6 +619,8 @@ class AITranslatorSettingTab extends PluginSettingTab {
 						'deepseek-v4-flash',
 						'glm-5.1'
 					];
+					break;
+			}
 
 			const currentModel = (this.plugin.settings[`${keyPrefix}Model`] || '').trim();
 			const isCustom = currentModel && !presetModels.includes(currentModel);
@@ -429,6 +639,44 @@ class AITranslatorSettingTab extends PluginSettingTab {
 						dropdown.addOption('gemini-2.0-flash', 'Gemini 2.0 Flash (gemini-2.0-flash)');
 						dropdown.addOption('gemini-1.5-flash', 'Gemini 1.5 Flash (gemini-1.5-flash)');
 						dropdown.addOption('gemini-1.5-pro', 'Gemini 1.5 Pro (gemini-1.5-pro)');
+					} else if (keyPrefix === 'openai') {
+						dropdown.addOption('gpt-4o', 'GPT-4o');
+						dropdown.addOption('gpt-4o-mini', 'GPT-4o-mini');
+						dropdown.addOption('o1-mini', 'o1-mini');
+						dropdown.addOption('o3-mini', 'o3-mini');
+						dropdown.addOption('gpt-4-turbo', 'GPT-4-turbo');
+					} else if (keyPrefix === 'claude') {
+						dropdown.addOption('claude-3-5-sonnet-latest', 'Claude 3.5 Sonnet');
+						dropdown.addOption('claude-3-5-haiku-latest', 'Claude 3.5 Haiku');
+						dropdown.addOption('claude-3-opus-latest', 'Claude 3 Opus');
+					} else if (keyPrefix === 'siliconflow') {
+						dropdown.addOption('deepseek-ai/DeepSeek-V3', 'DeepSeek V3');
+						dropdown.addOption('deepseek-ai/DeepSeek-R1', 'DeepSeek R1');
+						dropdown.addOption('Qwen/Qwen2.5-72B-Instruct', 'Qwen 2.5 72B');
+						dropdown.addOption('Qwen/Qwen2.5-32B-Instruct', 'Qwen 2.5 32B');
+						dropdown.addOption('Qwen/Qwen2.5-14B-Instruct', 'Qwen 2.5 14B');
+						dropdown.addOption('Qwen/Qwen2.5-7B-Instruct', 'Qwen 2.5 7B');
+						dropdown.addOption('THUDM/glm-4-9b-chat', 'GLM 4 9B');
+						dropdown.addOption('internlm/internlm2_5-20b-chat', 'InternLM 2.5 20B');
+					} else if (keyPrefix === 'moonshot') {
+						dropdown.addOption('moonshot-v1-8k', 'Kimi 8k');
+						dropdown.addOption('moonshot-v1-32k', 'Kimi 32k');
+						dropdown.addOption('moonshot-v1-128k', 'Kimi 128k');
+					} else if (keyPrefix === 'zhipu') {
+						dropdown.addOption('glm-4-flash', 'GLM-4 Flash');
+						dropdown.addOption('glm-4-plus', 'GLM-4 Plus');
+						dropdown.addOption('glm-4-air', 'GLM-4 Air');
+						dropdown.addOption('glm-4-long', 'GLM-4 Long');
+					} else if (keyPrefix === 'openrouter') {
+						dropdown.addOption('meta-llama/llama-3.3-70b-instruct', 'Llama 3.3 70B');
+						dropdown.addOption('deepseek/deepseek-chat', 'DeepSeek V3');
+						dropdown.addOption('google/gemini-2.5-flash', 'Gemini 2.5 Flash');
+						dropdown.addOption('anthropic/claude-3.5-sonnet', 'Claude 3.5 Sonnet');
+					} else if (keyPrefix === 'groq') {
+						dropdown.addOption('llama-3.3-70b-versatile', 'Llama 3.3 70B');
+						dropdown.addOption('llama-3.1-8b-instant', 'Llama 3.1 8B');
+						dropdown.addOption('mixtral-8x7b-32768', 'Mixtral 8x7B');
+						dropdown.addOption('gemma2-9b-it', 'Gemma 2 9B');
 					} else if (keyPrefix === 'qwen') {
 						dropdown.addOption('qwen-plus', 'Qwen-Plus');
 						dropdown.addOption('qwen-max', 'Qwen-Max');
@@ -523,4 +771,4 @@ class AITranslatorSettingTab extends PluginSettingTab {
 	}
 }
 
-module.exports = AITranslatorPlugin;
+module.exports = TranslatorPlugin;
